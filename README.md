@@ -61,13 +61,239 @@ variable "each_vm" {
 }
 ```  
 При желании внесите в переменную все возможные параметры.
+
 4. ВМ из пункта 2.1 должны создаваться после создания ВМ из пункта 2.2.
 5. Используйте функцию file в local-переменной для считывания ключа ~/.ssh/id_rsa.pub и его последующего использования в блоке metadata, взятому из ДЗ 2.
 6. Инициализируйте проект, выполните код.
 
 ## Решение 2
 
-...
+1. Создаём `count-vm.tf`
+    ```
+    # vms with count
+
+
+    ## basical vars
+
+    variable "vm_count_image_family" {
+      type    = string
+      default = "ubuntu-2004-lts"
+    }
+
+    variable "vm_count_name" {
+      type    = string
+      default = "web"
+    }
+
+    variable "vm_count_platform_id" {
+      type    = string
+      default = "standard-v1"
+    }
+
+    variable "vm_count_preemptible" {
+      type    = bool
+      default = true
+    }
+
+    variable "vm_count_nat" {
+      type    = bool
+      default = true
+    }
+
+    variable "vm_count_serial_port_enable" {
+      type    = number
+      default = 1
+    }
+
+
+    ## resources
+
+    variable "vm_count_resources" {
+      type = object({
+        cores = number
+        memory = number
+        core_fraction = number
+      })
+      default = {
+          cores = 2
+          memory = 1
+          core_fraction = 5
+      }
+    }
+
+
+    ## vm_ssh
+
+    locals {
+      ssh_vm_count_pub_key = "ubuntu:${file("./ed25519_pub")}"
+    }
+
+
+    ## os
+
+    data "yandex_compute_image" "vm_count_os" {
+      family = var.vm_count_image_family
+    }
+
+
+    ## vms
+
+    resource "yandex_compute_instance" "vms_count" {
+      count = 2
+      name = "${var.vm_count_name}-${count.index + 1}"
+      platform_id = var.vm_count_platform_id
+
+      resources {
+        cores         = var.vm_count_resources.cores
+        memory        = var.vm_count_resources.memory
+        core_fraction = var.vm_count_resources.core_fraction
+      }
+
+      boot_disk {
+        initialize_params {
+          image_id = data.yandex_compute_image.vm_count_os.id
+        }
+      }
+
+      scheduling_policy {
+        preemptible = var.vm_count_preemptible
+      }
+
+      network_interface {
+        subnet_id = yandex_vpc_subnet.develop.id
+        nat       = var.vm_count_nat
+        security_group_ids = [yandex_vpc_security_group.example.id]
+      }
+
+      metadata = {
+        serial-port-enable = var.vm_count_serial_port_enable
+        ssh-keys = local.ssh_vm_count_pub_key
+      }
+
+      depends_on = [yandex_compute_instance.db]
+    }
+    ```
+2. Создаём `for_each-vm.tf`
+    ```
+    # vms with for_each
+
+
+    ## basical vars
+
+    variable "vm_for_each_image_family" {
+      type    = string
+      default = "ubuntu-2004-lts"
+    }
+
+    variable "vm_for_each_count_name" {
+      type    = string
+      default = "db"
+    }
+
+    variable "vm_for_each_platform_id" {
+      type    = string
+      default = "standard-v1"
+    }
+
+    variable "vm_for_each_preemptible" {
+      type    = bool
+      default = true
+    }
+
+    variable "vm_for_each_nat" {
+      type    = bool
+      default = true
+    }
+
+    variable "vm_for_each_serial_port_enable" {
+      type    = number
+      default = 1
+    }
+
+
+    ## resources
+
+    variable "each_vm" {
+      type = list(object({  vm_name=string, cpu=number, ram=number, disk_volume=number, core_fraction=number }))
+      default = [
+        { vm_name = "main", cpu = 2, ram = 2, disk_volume = 10, core_fraction = 5 },
+        { vm_name = "replica", cpu = 2, ram = 2, disk_volume = 10, core_fraction = 5 }
+      ]
+    }
+
+
+    ## vm_ssh
+
+    locals {
+      ssh_for_each_pub_key = "ubuntu:${file("./ed25519_pub")}"
+    }
+
+
+    ## os
+
+    data "yandex_compute_image" "vm_for_each_os" {
+      family = var.vm_for_each_image_family
+    }
+
+
+    ## vms
+
+    resource "yandex_compute_instance" "db" {
+      # for_each = {
+      #  main = {
+      #    vm_name = "main"
+      #    cpu     = 2
+      #    ram     = 2
+      #    disk_volume = 10
+      #    core_fraction = 5
+      #  },
+      #  replica = {
+      #    vm_name = "replica"
+      #    cpu     = 2
+      #    ram     = 2
+      #    disk_volume = 10
+      #    core_fraction = 5
+      #  }
+      # }
+
+      for_each = { for vm in var.each_vm: vm.vm_name => vm }
+
+      name = each.value.vm_name
+
+      resources {
+        cores         = each.value.cpu
+        memory        = each.value.ram
+        core_fraction = each.value.core_fraction
+      }
+
+      platform_id = var.vm_for_each_platform_id
+
+      boot_disk {
+        initialize_params {
+          image_id = data.yandex_compute_image.vm_for_each_os.id
+          size     = each.value.disk_volume
+        }
+      }
+
+      scheduling_policy {
+        preemptible = var.vm_for_each_preemptible
+      }
+
+      network_interface {
+        subnet_id = yandex_vpc_subnet.develop.id
+        nat       = var.vm_for_each_nat
+        security_group_ids = [yandex_vpc_security_group.example.id]
+      }
+
+      metadata = {
+        serial-port-enable = var.vm_for_each_serial_port_enable
+        ssh-keys = local.ssh_for_each_pub_key
+      }
+    }
+    ```
+3. Пробуем создать сущности через `terraform apply`, убедившись через `terraform plan`, что создадудться 4 машины с ожидаемыми конфигурациями
+    ![webs_and_dbs_created](./screens/webs_and_dbs_created.png)
+    ![webs_and_dbs_created_gui](./screens/webs_and_dbs_created_gui.png)
 
 ## Задание 3
 
