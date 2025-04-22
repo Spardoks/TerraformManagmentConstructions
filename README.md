@@ -23,7 +23,33 @@ https://github.com/netology-code/ter-homeworks/blob/main/03/hw-03.md
 
 ## Решение 1
 
-...
+1. Готовимся к инициализации
+    ```
+    # Terraform v1.11.4
+
+    yc config profile activate sa-profile
+    export YC_TOKEN=$(yc iam create-token)
+    export YC_CLOUD_ID=$(yc config get cloud-id)
+    export YC_FOLDER_ID=$(yc config get folder-id)
+
+    cd 03/src
+    cp .terraformrc ~/.terraformrc
+
+    # настраиваем personal.auto.tfvars
+    cat > personal.auto.tfvars << EOF
+    token        = "${YC_TOKEN}"
+    cloud_id     = "${YC_CLOUD_ID}"
+    folder_id    = "${YC_FOLDER_ID}"
+    EOF
+    ```
+2. Инициализируем проект
+    ```
+    terraform init
+    terraform validate
+    terraform plan
+    terraform apply
+    ```
+    ![init_successful](./screens/init_successful.png)
 
 ## Задание 2
 
