@@ -27,6 +27,8 @@ https://github.com/netology-code/ter-homeworks/blob/main/03/hw-03.md
     ```
     # Terraform v1.11.4
 
+    ssh-keygen -t ed25519
+
     yc config profile activate sa-profile
     export YC_TOKEN=$(yc iam create-token)
     export YC_CLOUD_ID=$(yc config get cloud-id)
@@ -460,12 +462,43 @@ storage ansible_host=<внешний ip-адрес> fqdn=<полное доме�
 Пример fqdn: ```web1.ru-central1.internal```(в случае указания переменной hostname(не путать с переменной name)); ```fhm8k1oojmm5lie8i22a.auto.internal```(в случае отсутвия перменной hostname - автоматическая генерация имени,  зона изменяется на auto). нужную вам переменную найдите в документации провайдера или terraform console.
 4. Выполните код. Приложите скриншот получившегося файла. 
 
-Для общего зачёта создайте в вашем GitHub-репозитории новую ветку terraform-03. Закоммитьте в эту ветку свой финальный код проекта, пришлите ссылку на коммит.   
-**Удалите все созданные ресурсы**.
-
 ## Решение 4
 
-...
+1. Создаём `inventory.tftpl`
+    ```
+    [webservers]
+    %{ for vm in webservers ~}
+    ${vm.name} ansible_host=${vm.network_interface[0].nat_ip_address} fqdn=${vm.fqdn}
+    %{ endfor ~}
+
+    [databases]
+    %{ for vm in databases ~}
+    ${vm.name} ansible_host=${vm.network_interface[0].nat_ip_address} fqdn=${vm.fqdn}
+    %{ endfor ~}
+
+    [storage]
+    %{ for vm in storage ~}
+    ${vm.name} ansible_host=${vm.network_interface[0].nat_ip_address} fqdn=${vm.fqdn}
+    %{ endfor ~}
+    ```
+2. Создаём `ansible.tf`
+    ```
+    resource "local_file" "ansible_inventory" {
+      content = templatefile("${path.module}/inventory.tftpl", {
+        webservers = yandex_compute_instance.vms_count[*],
+        databases  = values(yandex_compute_instance.db)[*],
+        storage    = [yandex_compute_instance.storage]
+      })
+      filename = "${abspath(path.module)}/inventory.ini"
+    }
+    ```
+3. Создаём inventory файл через `terraform apply`, перед этим выполнив снова `terraform init` для подгрузки необходимых зависимостей
+    ![inventory_created](./screens/inventory_created.png)
+    ```
+    # проверить работу inventory можно, например, подобными действиями
+    eval $(ssh-agent) && cat ./ed25519_priv | ssh-add -
+    ansible all -i inventory.ini -m ping --private-key ./ed25519_priv -u ubuntu
+    ```
 
 ## Дополнительные задания (со звездочкой*)
 
